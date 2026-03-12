@@ -26,6 +26,18 @@ type PredictionResult = {
   isHealthy: boolean;
 };
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  return "Something went wrong.";
+}
+
 const SAMPLE_RESULT: PredictionResult = {
   disease: "Tomato___Early_blight",
   confidence: 93.4,
@@ -39,13 +51,14 @@ export default function HomeScreen() {
   const [selectedPlant, setSelectedPlant] = useState<string | null>(null);
   const [plantPickerOpen, setPlantPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [analysisStatus, setAnalysisStatus] = useState<string | null>(null);
   const [result, setResult] = useState<PredictionResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const cameraRef = useRef<CameraView>(null);
 
   async function takePhoto() {
     if (!cameraRef.current) {
-      setErrorMessage("Something went wrong.");
+      setErrorMessage("Camera is not ready.");
       return;
     }
     try {
@@ -58,24 +71,29 @@ export default function HomeScreen() {
         setErrorMessage(null);
         setCameraOpen(false);
       } else {
-        setErrorMessage("Something went wrong.");
+        setErrorMessage("Failed to capture photo.");
       }
     } catch (e) {
       console.error("Camera error", e);
-      setErrorMessage("Something went wrong.");
+      setErrorMessage(getErrorMessage(e));
     }
   }
 
   async function runInference(uri: string) {
     setLoading(true);
     setErrorMessage(null);
+    setAnalysisStatus("Starting analysis...");
     try {
-      const prediction = await predictDisease(uri, "efficientnet");
+      const prediction = await predictDisease(uri, "efficientnet", {
+        onStatusChange: setAnalysisStatus,
+      });
       setResult(prediction);
     } catch (e) {
       console.error("Prediction error", e);
-      setErrorMessage("Something went wrong.");
+      setResult(null);
+      setErrorMessage(getErrorMessage(e));
     } finally {
+      setAnalysisStatus(null);
       setLoading(false);
     }
   }
@@ -89,7 +107,7 @@ export default function HomeScreen() {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        setErrorMessage("Something went wrong.");
+        setErrorMessage("Gallery permission was denied.");
         return;
       }
       const picked = await ImagePicker.launchImageLibraryAsync({
@@ -102,7 +120,7 @@ export default function HomeScreen() {
       }
     } catch (e) {
       console.error("Gallery error", e);
-      setErrorMessage("Something went wrong.");
+      setErrorMessage(getErrorMessage(e));
     }
   }
 
@@ -233,7 +251,9 @@ export default function HomeScreen() {
         {loading && (
           <View style={styles.resultCard}>
             <ActivityIndicator size="large" color="#3a8f3a" />
-            <Text style={styles.analyzingText}>Analysing image…</Text>
+            <Text style={styles.analyzingText}>
+              {analysisStatus ?? "Analysing image..."}
+            </Text>
           </View>
         )}
 
@@ -313,7 +333,7 @@ export default function HomeScreen() {
               if (!permission.granted) {
                 const res = await requestPermission();
                 if (!res.granted) {
-                  setErrorMessage("Something went wrong.");
+                  setErrorMessage("Camera permission was denied.");
                   return;
                 }
               }
@@ -478,6 +498,7 @@ const styles = StyleSheet.create({
     color: "#ff8f8f",
     fontSize: 14,
     textAlign: "center",
+    lineHeight: 20,
     marginTop: -4,
   },
 

@@ -5,6 +5,26 @@ import { inflate } from "pako";
 const labels: string[] = require("./labels.json");
 
 export type ModelType = "efficientnet" | "mobilenet";
+type StatusHandler = (status: string) => void;
+
+type PredictOptions = {
+  onStatusChange?: StatusHandler;
+};
+
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  return "Unknown error.";
+};
+
+const buildStageError = (stage: string, error: unknown) =>
+  new Error(`${stage}: ${getErrorMessage(error)}`);
 
 // ─── Lazy-load fast-tflite so a JSI binding failure doesn't crash the module ─
 type TfliteLib = typeof import("react-native-fast-tflite");
@@ -165,12 +185,41 @@ const imageToTensor = async (imageUri: string): Promise<Float32Array> => {
 export const predictDisease = async (
   imageUri: string,
   modelType: ModelType,
+  options: PredictOptions = {},
 ) => {
-  const m = await loadModel(modelType);
-  const tensor = await imageToTensor(imageUri);
-  const output = await m.run([tensor]);
+  const { onStatusChange } = options;
 
-  const probabilities = Array.from(output[0] as Float32Array);
+  onStatusChange?.("Loading model...");
+  let m: ModelInstance;
+  try {
+    m = await loadModel(modelType);
+  } catch (error) {
+    throw buildStageError("Failed to load model", error);
+  }
+
+  onStatusChange?.("Preparing image...");
+  let tensor: Float32Array;
+  try {
+    tensor = await imageToTensor(imageUri);
+  } catch (error) {
+    throw buildStageError("Failed to prepare image", error);
+  }
+
+  onStatusChange?.("Running inference...");
+  let output: unknown[];
+  try {
+    output = await m.run([tensor]);
+  } catch (error) {
+    throw buildStageError("Failed to run inference", error);
+  }
+
+  onStatusChange?.("Processing result...");
+  const rawProbabilities = output[0];
+  if (!(rawProbabilities instanceof Float32Array)) {
+    throw new Error("Failed to process result: model output is invalid.");
+  }
+
+  const probabilities = Array.from(rawProbabilities);
   const maxIndex = probabilities.indexOf(Math.max(...probabilities));
   const confidence = (probabilities[maxIndex] * 100).toFixed(1);
   const diseaseName = labels[maxIndex] ?? "Unknown";
