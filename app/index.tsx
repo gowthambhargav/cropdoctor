@@ -3,15 +3,15 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import { useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const ALL_LABELS: string[] = require("@/util/labels.json");
@@ -40,27 +40,41 @@ export default function HomeScreen() {
   const [plantPickerOpen, setPlantPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<PredictionResult | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const cameraRef = useRef<CameraView>(null);
 
   async function takePhoto() {
-    if (!cameraRef.current) return;
-    const captured = await cameraRef.current.takePictureAsync({
-      quality: 0.85,
-    });
-    if (captured?.uri) {
-      setPhoto(captured.uri);
-      setResult(null);
-      setCameraOpen(false);
+    if (!cameraRef.current) {
+      setErrorMessage("Something went wrong.");
+      return;
+    }
+    try {
+      const captured = await cameraRef.current.takePictureAsync({
+        quality: 0.85,
+      });
+      if (captured?.uri) {
+        setPhoto(captured.uri);
+        setResult(null);
+        setErrorMessage(null);
+        setCameraOpen(false);
+      } else {
+        setErrorMessage("Something went wrong.");
+      }
+    } catch (e) {
+      console.error("Camera error", e);
+      setErrorMessage("Something went wrong.");
     }
   }
 
   async function runInference(uri: string) {
     setLoading(true);
+    setErrorMessage(null);
     try {
       const prediction = await predictDisease(uri, "efficientnet");
       setResult(prediction);
     } catch (e) {
       console.error("Prediction error", e);
+      setErrorMessage("Something went wrong.");
     } finally {
       setLoading(false);
     }
@@ -71,15 +85,24 @@ export default function HomeScreen() {
       setPlantPickerOpen(true);
       return;
     }
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return;
-    const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.85,
-    });
-    if (!picked.canceled && picked.assets[0]?.uri) {
-      setPhoto(picked.assets[0].uri);
-      setResult(null);
+    setErrorMessage(null);
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        setErrorMessage("Something went wrong.");
+        return;
+      }
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.85,
+      });
+      if (!picked.canceled && picked.assets[0]?.uri) {
+        setPhoto(picked.assets[0].uri);
+        setResult(null);
+      }
+    } catch (e) {
+      console.error("Gallery error", e);
+      setErrorMessage("Something went wrong.");
     }
   }
 
@@ -194,6 +217,8 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
+        {errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
+
         {/* Sample result button */}
         {!loading && (
           <TouchableOpacity
@@ -248,6 +273,7 @@ export default function HomeScreen() {
               onPress={() => {
                 setPhoto(null);
                 setResult(null);
+                setErrorMessage(null);
               }}
             >
               <Text style={styles.retakeBtnText}>Try Another Photo</Text>
@@ -286,10 +312,14 @@ export default function HomeScreen() {
               }
               if (!permission.granted) {
                 const res = await requestPermission();
-                if (!res.granted) return;
+                if (!res.granted) {
+                  setErrorMessage("Something went wrong.");
+                  return;
+                }
               }
               setPhoto(null);
               setResult(null);
+              setErrorMessage(null);
               setCameraOpen(true);
             }}
           >
@@ -442,6 +472,13 @@ const styles = StyleSheet.create({
     color: "#aacfaa",
     fontSize: 14,
     fontWeight: "600",
+  },
+  errorText: {
+    width: "100%",
+    color: "#ff8f8f",
+    fontSize: 14,
+    textAlign: "center",
+    marginTop: -4,
   },
 
   // Bottom bar
