@@ -26,6 +26,12 @@ type PredictionResult = {
   isHealthy: boolean;
 };
 
+const SAMPLE_RESULT: PredictionResult = {
+  disease: "Tomato___Early_blight",
+  confidence: 93.4,
+  isHealthy: false,
+};
+
 export default function HomeScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -45,7 +51,6 @@ export default function HomeScreen() {
       setPhoto(captured.uri);
       setResult(null);
       setCameraOpen(false);
-      runInference(captured.uri);
     }
   }
 
@@ -75,7 +80,6 @@ export default function HomeScreen() {
     if (!picked.canceled && picked.assets[0]?.uri) {
       setPhoto(picked.assets[0].uri);
       setResult(null);
-      runInference(picked.assets[0].uri);
     }
   }
 
@@ -178,6 +182,26 @@ export default function HomeScreen() {
                 : "Select a plant, then take a photo"}
             </Text>
           </View>
+        )}
+
+        {/* Analyze button */}
+        {photo && !loading && (
+          <TouchableOpacity
+            style={styles.analyzeBtn}
+            onPress={() => runInference(photo)}
+          >
+            <Text style={styles.analyzeBtnText}>Analyze</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Sample result button */}
+        {!loading && (
+          <TouchableOpacity
+            style={styles.sampleBtn}
+            onPress={() => setResult(SAMPLE_RESULT)}
+          >
+            <Text style={styles.sampleBtnText}>Show Sample Result</Text>
+          </TouchableOpacity>
         )}
 
         {/* ── Analyzing spinner ── */}
@@ -390,6 +414,35 @@ const styles = StyleSheet.create({
     borderRadius: 24,
   },
   retakeBtnText: { color: "#fff", fontSize: 15, fontWeight: "600" },
+  analyzeBtn: {
+    width: "100%",
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: "#3a8f3a",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  analyzeBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
+  sampleBtn: {
+    width: "100%",
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#3a8f3a",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#1a3a1a",
+  },
+  sampleBtnText: {
+    color: "#aacfaa",
+    fontSize: 14,
+    fontWeight: "600",
+  },
 
   // Bottom bar
   bottomBar: {
