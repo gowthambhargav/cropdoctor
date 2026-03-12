@@ -86,6 +86,7 @@ export default function HomeScreen() {
     try {
       const prediction = await predictDisease(uri, "efficientnet", {
         onStatusChange: setAnalysisStatus,
+        selectedPlant,
       });
       setResult(prediction);
     } catch (e) {

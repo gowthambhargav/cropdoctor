@@ -3,13 +3,22 @@ import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { inflate } from "pako";
 
 const labels: string[] = require("./labels.json");
+const plantLabels: Record<string, string> = require("./labels_m2.json");
+
+const LEAF_CONFIDENCE_THRESHOLD = 0.45;
 
 export type ModelType = "efficientnet" | "mobilenet";
 type StatusHandler = (status: string) => void;
 
 type PredictOptions = {
   onStatusChange?: StatusHandler;
+  selectedPlant?: string | null;
 };
+
+const normalizePlantName = (value: string) =>
+  value.toLowerCase().replace(/_/g, " ").replace(/,/g, "").trim();
+
+const getPlantNameFromLabel = (label: string) => label.split("___")[0] ?? "";
 
 const getErrorMessage = (error: unknown) => {
   if (error instanceof Error && error.message.trim()) {
@@ -30,6 +39,11 @@ const buildStageError = (stage: string, error: unknown) =>
 type TfliteLib = typeof import("react-native-fast-tflite");
 type ModelInstance = { run: (inputs: unknown[]) => Promise<unknown[]> };
 
+type PlantMatch = {
+  plant: string;
+  confidence: number;
+};
+
 let tflite: TfliteLib | null = null;
 try {
   tflite = require("react-native-fast-tflite") as TfliteLib;
@@ -41,6 +55,9 @@ try {
 }
 
 const modelCache: Partial<Record<ModelType, ModelInstance>> = {};
+
+const getLabelsForModel = (type: ModelType) =>
+  type === "efficientnet" ? labels : Object.values(plantLabels);
 
 export const loadModel = async (type: ModelType): Promise<ModelInstance> => {
   if (!tflite)
@@ -59,6 +76,83 @@ export const loadModel = async (type: ModelType): Promise<ModelInstance> => {
   modelCache[type] = m as ModelInstance;
   console.log(`✅ Model loaded: ${type}`);
   return m as ModelInstance;
+};
+
+const getProbabilitiesFromOutput = (output: unknown[]) => {
+  const rawProbabilities = output[0];
+  if (!(rawProbabilities instanceof Float32Array)) {
+    throw new Error("model output is invalid.");
+  }
+
+  return Array.from(rawProbabilities);
+};
+
+const runModel = async (type: ModelType, tensor: Float32Array) => {
+  const model = await loadModel(type);
+  const output = await model.run([tensor]);
+  return getProbabilitiesFromOutput(output);
+};
+
+const getBestPlantMatch = (
+  probabilities: number[],
+  modelLabels: string[],
+): PlantMatch | null => {
+  const totals = new Map<string, number>();
+
+  modelLabels.forEach((label, index) => {
+    const plant = normalizePlantName(getPlantNameFromLabel(label));
+    const score = probabilities[index] ?? 0;
+    totals.set(plant, (totals.get(plant) ?? 0) + score);
+  });
+
+  let bestPlant: string | null = null;
+  let bestConfidence = -1;
+  for (const [plant, confidence] of totals) {
+    if (confidence > bestConfidence) {
+      bestPlant = plant;
+      bestConfidence = confidence;
+    }
+  }
+
+  if (!bestPlant) {
+    return null;
+  }
+
+  return {
+    plant: bestPlant,
+    confidence: bestConfidence,
+  };
+};
+
+const validateSelectedLeaf = async (
+  tensor: Float32Array,
+  selectedPlant: string | null | undefined,
+) => {
+  if (!selectedPlant) {
+    return;
+  }
+
+  const probabilities = await runModel("mobilenet", tensor);
+  const bestPlantMatch = getBestPlantMatch(
+    probabilities,
+    getLabelsForModel("mobilenet"),
+  );
+
+  if (
+    !bestPlantMatch ||
+    bestPlantMatch.confidence < LEAF_CONFIDENCE_THRESHOLD
+  ) {
+    throw new Error(
+      "No clear leaf was detected. Use a close-up photo of a single leaf.",
+    );
+  }
+
+  const normalizedSelectedPlant = normalizePlantName(selectedPlant);
+  if (bestPlantMatch.plant !== normalizedSelectedPlant) {
+    throw new Error(
+      `Selected plant does not match the photo. Detected ${bestPlantMatch.plant} leaf instead.`,
+    );
+  }
 };
 
 // ─── Image → Float32Array (224 × 224 × 3) ────────────────────────────────────
@@ -189,7 +283,7 @@ export const predictDisease = async (
   modelType: ModelType,
   options: PredictOptions = {},
 ) => {
-  const { onStatusChange } = options;
+  const { onStatusChange, selectedPlant } = options;
 
   onStatusChange?.("Loading model...");
   let m: ModelInstance;
@@ -207,22 +301,49 @@ export const predictDisease = async (
     throw buildStageError("Failed to prepare image", error);
   }
 
-  onStatusChange?.("Running inference...");
-  let output: unknown[];
+  onStatusChange?.("Validating leaf...");
   try {
-    output = await m.run([tensor]);
+    await validateSelectedLeaf(tensor, selectedPlant);
+  } catch (error) {
+    throw buildStageError("Leaf validation failed", error);
+  }
+
+  onStatusChange?.("Running inference...");
+  let probabilities: number[];
+  try {
+    probabilities = await runModel(modelType, tensor);
   } catch (error) {
     throw buildStageError("Failed to run inference", error);
   }
 
   onStatusChange?.("Processing result...");
-  const rawProbabilities = output[0];
-  if (!(rawProbabilities instanceof Float32Array)) {
-    throw new Error("Failed to process result: model output is invalid.");
+  const normalizedSelectedPlant = selectedPlant
+    ? normalizePlantName(selectedPlant)
+    : null;
+
+  const candidateIndexes = labels
+    .map((label, index) => ({
+      index,
+      plant: normalizePlantName(getPlantNameFromLabel(label)),
+    }))
+    .filter(({ plant }) =>
+      normalizedSelectedPlant ? plant === normalizedSelectedPlant : true,
+    )
+    .map(({ index }) => index);
+
+  if (candidateIndexes.length === 0) {
+    throw new Error(
+      selectedPlant
+        ? `No disease labels were found for ${selectedPlant}.`
+        : "No disease labels are available for prediction.",
+    );
   }
 
-  const probabilities = Array.from(rawProbabilities);
-  const maxIndex = probabilities.indexOf(Math.max(...probabilities));
+  const maxIndex = candidateIndexes.reduce((bestIndex, currentIndex) =>
+    probabilities[currentIndex] > probabilities[bestIndex]
+      ? currentIndex
+      : bestIndex,
+  );
   const confidence = (probabilities[maxIndex] * 100).toFixed(1);
   const diseaseName = labels[maxIndex] ?? "Unknown";
 
