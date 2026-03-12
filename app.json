@@ -14,11 +14,13 @@
     },
     "android": {
       "permissions": [
-        "CAMERA",
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ],
-      "package": "com.gowtham213.crop_ai"
+      "package": "com.gowtham213.crop_ai",
+      "android": {
+        "buildType": "apk"
+      }
     },
     "web": {
       "output": "static",
@@ -56,6 +58,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "53b86e0c-8857-46fa-8cd7-ab2f14e2be22"
+      }
     }
   }
 }
