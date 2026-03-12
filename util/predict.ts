@@ -1,4 +1,4 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
 import { inflate } from "pako";
 
@@ -78,7 +78,7 @@ const imageToTensor = async (imageUri: string): Promise<Float32Array> => {
 
   // Step 2 – read PNG bytes
   const b64 = await FileSystem.readAsStringAsync(resizedUri, {
-    encoding: "base64",
+    encoding: FileSystem.EncodingType.Base64,
   });
   const bin = atob(b64);
   const png = new Uint8Array(bin.length);
