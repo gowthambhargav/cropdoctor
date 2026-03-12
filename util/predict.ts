@@ -5,7 +5,8 @@ import { inflate } from "pako";
 const labels: string[] = require("./labels.json");
 const plantLabels: Record<string, string> = require("./labels_m2.json");
 
-const LEAF_CONFIDENCE_THRESHOLD = 0.45;
+const LEAF_CONFIDENCE_THRESHOLD = 0.3;
+const LEAF_MISMATCH_BLOCK_THRESHOLD = 0.55;
 
 export type ModelType = "efficientnet" | "mobilenet";
 type StatusHandler = (status: string) => void;
@@ -34,6 +35,32 @@ const getErrorMessage = (error: unknown) => {
 
 const buildStageError = (stage: string, error: unknown) =>
   new Error(`${stage}: ${getErrorMessage(error)}`);
+
+const toProbabilities = (scores: number[]) => {
+  if (scores.length === 0) {
+    return scores;
+  }
+
+  const allBetweenZeroAndOne = scores.every(
+    (value) => value >= 0 && value <= 1,
+  );
+  const sum = scores.reduce((total, value) => total + value, 0);
+
+  // If the model already emits probabilities, keep them as-is.
+  if (allBetweenZeroAndOne && Math.abs(sum - 1) < 0.05) {
+    return scores;
+  }
+
+  // Convert logits (or arbitrary scores) to probabilities.
+  const maxScore = Math.max(...scores);
+  const expScores = scores.map((value) => Math.exp(value - maxScore));
+  const expSum = expScores.reduce((total, value) => total + value, 0);
+  if (expSum <= 0 || !Number.isFinite(expSum)) {
+    return scores;
+  }
+
+  return expScores.map((value) => value / expSum);
+};
 
 // ─── Lazy-load fast-tflite so a JSI binding failure doesn't crash the module ─
 type TfliteLib = typeof import("react-native-fast-tflite");
@@ -90,7 +117,7 @@ const getProbabilitiesFromOutput = (output: unknown[]) => {
 const runModel = async (type: ModelType, tensor: Float32Array) => {
   const model = await loadModel(type);
   const output = await model.run([tensor]);
-  return getProbabilitiesFromOutput(output);
+  return toProbabilities(getProbabilitiesFromOutput(output));
 };
 
 const getBestPlantMatch = (
@@ -142,13 +169,15 @@ const validateSelectedLeaf = async (
     !bestPlantMatch ||
     bestPlantMatch.confidence < LEAF_CONFIDENCE_THRESHOLD
   ) {
-    throw new Error(
-      "No clear leaf was detected. Use a close-up photo of a single leaf.",
-    );
+    // The detector is uncertain: continue to disease inference instead of blocking.
+    return;
   }
 
   const normalizedSelectedPlant = normalizePlantName(selectedPlant);
-  if (bestPlantMatch.plant !== normalizedSelectedPlant) {
+  if (
+    bestPlantMatch.plant !== normalizedSelectedPlant &&
+    bestPlantMatch.confidence >= LEAF_MISMATCH_BLOCK_THRESHOLD
+  ) {
     throw new Error(
       `Selected plant does not match the photo. Detected ${bestPlantMatch.plant} leaf instead.`,
     );
