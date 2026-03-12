@@ -195,7 +195,7 @@ export default function HomeScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.appTitle}>🌿 Plant Doctor</Text>
+        <Text style={styles.appTitle}>🌿 Crop Doctor</Text>
 
         {/* ── Plant selector ── */}
         <TouchableOpacity

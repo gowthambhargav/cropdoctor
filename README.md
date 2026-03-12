@@ -1,50 +1,145 @@
-# Welcome to your Expo app 👋
+# CropDoctor
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+CropDoctor is an Expo + React Native app that identifies plant diseases from a leaf image.
 
-## Get started
+The app flow is:
 
-1. Install dependencies
+1. User selects a plant.
+2. User captures or picks a leaf image.
+3. App validates that the leaf likely matches the selected plant.
+4. App runs disease classification and returns the top prediction with confidence.
 
-   ```bash
-   npm install
-   ```
+## Tech Stack
 
-2. Start the app
+- Expo SDK 54
+- React Native 0.81
+- Expo Router
+- TensorFlow Lite inference via `react-native-fast-tflite`
+- Image preprocessing with `expo-image-manipulator`, `expo-file-system`, and `pako`
 
-   ```bash
-   npx expo start
-   ```
+## Project Structure
 
-In the output, you'll find options to open the app in a
+- `app/index.tsx`: Main UI flow (plant picker, camera/gallery, analyze button, results).
+- `util/predict.ts`: Model loading, image-to-tensor conversion, plant validation, and disease prediction.
+- `util/labels.json`: Disease model labels (format like `Plant___Disease_Name`).
+- `util/labels_m2.json`: Plant label mapping for leaf validation model.
+- `util/plant_model.tflite`: TFLite model used by current inference code.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## High-Level Architecture
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```mermaid
+flowchart LR
+   UI[app/index.tsx\nUser Interaction] --> PRED[predictDisease(...)\nutil/predict.ts]
+   PRED --> PREP[imageToTensor\n224x224 RGB Float32]
+   PREP --> LV[validateSelectedLeaf\nplant mismatch guard]
+   LV --> INF[runModel\nTFLite inference]
+   INF --> POST[Label filtering + top score]
+   POST --> UI
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Inference Pipeline
 
-## Learn more
+```mermaid
+flowchart TD
+   A[Input image URI] --> B[Load TFLite model]
+   B --> C[Resize image to 224x224 PNG]
+   C --> D[Read base64 bytes]
+   D --> E[Parse PNG chunks + inflate IDAT]
+   E --> F[Unfilter scanlines\n(PNG filter types 0..4)]
+   F --> G[Build Float32 tensor\nnormalized RGB in 0..1]
+   G --> H[Optional leaf validation\nusing mobilenet labels]
+   H --> I[Run disease model]
+   I --> J[Convert logits to probabilities\nif needed]
+   J --> K[Filter labels by selected plant]
+   K --> L[Pick max confidence result]
+   L --> M[Return disease, confidence, isHealthy]
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+## App Screen Flow
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```mermaid
+stateDiagram-v2
+   [*] --> Main
+   Main --> PlantPicker: Select plant
+   PlantPicker --> Main: Plant chosen
+   Main --> Camera: Tap camera
+   Camera --> Main: Capture photo
+   Main --> Main: Pick from gallery
+   Main --> Analyzing: Tap analyze
+   Analyzing --> Result: Prediction success
+   Analyzing --> Main: Error
+   Result --> Main: Try another photo
+```
 
-## Join the community
+## Setup
 
-Join our community of developers creating universal apps.
+1. Install dependencies.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```bash
+npm install
+```
+
+2. Build and run a development build (required for native TFLite module).
+
+```bash
+npm run android
+```
+
+or
+
+```bash
+npm run ios
+```
+
+3. Start Metro.
+
+```bash
+npm start
+```
+
+## Why Development Build (Not Expo Go)
+
+This app uses `react-native-fast-tflite` (a native JSI module). Expo Go does not include arbitrary native modules, so inference requires a custom development build created with `expo run:android` or `expo run:ios`.
+
+## Available Scripts
+
+- `npm start`: Start Metro bundler.
+- `npm run android`: Build/run Android development build.
+- `npm run ios`: Build/run iOS development build.
+- `npm run web`: Start web build (UI testing only).
+- `npm run lint`: Run Expo lint.
+
+## Prediction Contract
+
+`predictDisease(imageUri, modelType, options)` returns:
+
+```ts
+{
+  disease: string;
+  confidence: number; // percentage, e.g. 93.4
+  isHealthy: boolean;
+  modelUsed: string;
+}
+```
+
+## Notes and Limitations
+
+- Disease labels are plant-scoped using the `Plant___Disease` naming convention.
+- If plant validation strongly disagrees with the selected plant, inference is blocked with an error.
+- If plant validation is uncertain, inference continues.
+- Current model file loaded by code is `util/plant_model.tflite`.
+
+## Troubleshooting
+
+- Error: `react-native-fast-tflite is not available`
+  - Build a native dev client with `npm run android` or `npm run ios`.
+- Error: camera/gallery permission denied
+  - Enable permissions in device settings and relaunch the app.
+- Error: selected plant does not match photo
+  - Choose the matching plant type or take a clearer leaf photo.
+
+## Future Improvements
+
+- Separate plant-validation and disease models explicitly in code and assets.
+- Add top-k predictions and per-class probability breakdown.
+- Add offline result history for repeated diagnostics.

@@ -94,10 +94,7 @@ export const loadModel = async (type: ModelType): Promise<ModelInstance> => {
 
   if (modelCache[type]) return modelCache[type]!;
 
-  const file =
-    type === "efficientnet"
-      ? require("./crop_disease.tflite")
-      : require("./plant_model.tflite");
+  const file = require("./plant_model.tflite");
 
   const m = await tflite.loadTensorflowModel(file);
   modelCache[type] = m as ModelInstance;
