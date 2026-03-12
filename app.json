@@ -41,6 +41,12 @@
       "expo-sqlite",
       "react-native-fast-tflite",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Crop Doctor to access your photo library."
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Allow ParnaDrishti to access camera"
