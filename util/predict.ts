@@ -1,5 +1,5 @@
 import * as FileSystem from "expo-file-system/legacy";
-import * as ImageManipulator from "expo-image-manipulator";
+import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { inflate } from "pako";
 
 const labels: string[] = require("./labels.json");
@@ -70,11 +70,13 @@ export const loadModel = async (type: ModelType): Promise<ModelInstance> => {
 //  5. Convert uint8 RGB(A) → normalised float32 RGB in [0, 1]
 const imageToTensor = async (imageUri: string): Promise<Float32Array> => {
   // Step 1 – resize
-  const { uri: resizedUri } = await ImageManipulator.manipulateAsync(
-    imageUri,
-    [{ resize: { width: 224, height: 224 } }],
-    { compress: 1, format: ImageManipulator.SaveFormat.PNG },
-  );
+  const imageContext = ImageManipulator.manipulate(imageUri);
+  imageContext.resize({ width: 224, height: 224 });
+  const renderedImage = await imageContext.renderAsync();
+  const { uri: resizedUri } = await renderedImage.saveAsync({
+    compress: 1,
+    format: SaveFormat.PNG,
+  });
 
   // Step 2 – read PNG bytes
   const b64 = await FileSystem.readAsStringAsync(resizedUri, {
