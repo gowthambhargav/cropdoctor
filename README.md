@@ -143,3 +143,5 @@ This app uses `react-native-fast-tflite` (a native JSI module). Expo Go does not
 - Separate plant-validation and disease models explicitly in code and assets.
 - Add top-k predictions and per-class probability breakdown.
 - Add offline result history for repeated diagnostics.
+
+  https://arxiv.org/pdf/2104.00298
