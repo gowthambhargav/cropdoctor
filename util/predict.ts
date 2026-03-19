@@ -4,7 +4,7 @@ import { inflate } from "pako";
 
 // Added 99% accuracy model 19-3-2026
 
-const labels: string[] = require("./labels.json");
+const labels: string[] = require("./labels_m2.json");
 const plantLabels: Record<string, string> = require("./labels_m2.json");
 
 const LEAF_CONFIDENCE_THRESHOLD = 0.3;
