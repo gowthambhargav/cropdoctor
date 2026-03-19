@@ -14,7 +14,8 @@ import {
   View,
 } from "react-native";
 
-const ALL_LABELS: string[] = require("@/util/labels.json");
+const ALL_LABELS_MAP: Record<string, string> = require("@/util/labels_m2.json");
+const ALL_LABELS = Object.values(ALL_LABELS_MAP);
 
 const PLANTS = Array.from(
   new Set(ALL_LABELS.map((l) => l.split("___")[0].replace(/_/g, " "))),

@@ -2,6 +2,8 @@ import * as FileSystem from "expo-file-system/legacy";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { inflate } from "pako";
 
+// Added 99% accuracy model 19-3-2026
+
 const labels: string[] = require("./labels.json");
 const plantLabels: Record<string, string> = require("./labels_m2.json");
 
@@ -94,7 +96,7 @@ export const loadModel = async (type: ModelType): Promise<ModelInstance> => {
 
   if (modelCache[type]) return modelCache[type]!;
 
-  const file = require("./plant_model.tflite");
+  const file = require("./plant_disease_v2_99.tflite");
 
   const m = await tflite.loadTensorflowModel(file);
   modelCache[type] = m as ModelInstance;
