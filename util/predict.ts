@@ -158,10 +158,10 @@ const validateSelectedLeaf = async (
     return;
   }
 
-  const probabilities = await runModel("mobilenet", tensor);
+  const probabilities = await runModel("efficientnet", tensor);
   const bestPlantMatch = getBestPlantMatch(
     probabilities,
-    getLabelsForModel("mobilenet"),
+    getLabelsForModel("efficientnet"),
   );
 
   if (
